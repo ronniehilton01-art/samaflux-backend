@@ -3,15 +3,20 @@ import fetch from "node-fetch";
 
 const router = express.Router();
 
+// 🔥 TEST ROUTE
+router.get("/test", (req, res) => {
+  console.log("PAYMENT ROUTE HIT");
+  res.json({ ok: true });
+});
+
 router.post("/add-money", async (req, res) => {
+  console.log("ADD MONEY BODY:", req.body);
+
   try {
     const { email, amount } = req.body;
 
-    // ✅ VALIDATION (VERY IMPORTANT)
     if (!email || !amount) {
-      return res.status(400).json({
-        error: "Email and amount are required"
-      });
+      return res.status(400).json({ error: "Email and amount required" });
     }
 
     const response = await fetch(
@@ -24,22 +29,13 @@ router.post("/add-money", async (req, res) => {
         },
         body: JSON.stringify({
           email,
-          amount: Number(amount) * 100,
-          callback_url: "https://ronniehilton01-art.github.io/samaflux-frontend/"
+          amount: Number(amount) * 100
         })
       }
     );
 
     const data = await response.json();
-
-    // 🔥 DEBUG LOG (CHECK RENDER LOGS)
     console.log("PAYSTACK RESPONSE:", data);
-
-    if (!data.status) {
-      return res.status(400).json({
-        error: data.message || "Paystack initialization failed"
-      });
-    }
 
     res.json(data);
   } catch (err) {
