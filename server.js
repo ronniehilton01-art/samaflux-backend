@@ -1,26 +1,34 @@
 import express from "express";
+import mongoose from "mongoose";
 import cors from "cors";
+import dotenv from "dotenv";
 
 import authRoutes from "./routes/auth.js";
 import paymentRoutes from "./routes/payment.js";
 
+dotenv.config();
+
 const app = express();
 
-// Middlewares
+/* MIDDLEWARE */
 app.use(cors());
-app.use(express.json());
+app.use(express.json()); // 🔴 THIS WAS MISSING BEFORE
 
-// Health check
-app.get("/", (req, res) => {
-  res.send("Samaflux backend running");
-});
-
-// Routes
-app.use("/api/auth", authRoutes);
+/* ROUTES */
+app.use("/auth", authRoutes);
 app.use("/api/payment", paymentRoutes);
 
-// Server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+/* TEST ROUTE */
+app.get("/", (req, res) => {
+  res.json({ status: "Samaflux backend running" });
 });
+
+/* DATABASE */
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB connected"))
+  .catch(err => console.error(err));
+
+/* SERVER */
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
