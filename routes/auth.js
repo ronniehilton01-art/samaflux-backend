@@ -1,35 +1,52 @@
 import express from "express";
-import bcrypt from "bcryptjs";
 import User from "../models/User.js";
+import bcrypt from "bcryptjs";
 
 const router = express.Router();
 
+/* REGISTER */
 router.post("/register", async (req, res) => {
-  const { email, password, name } = req.body;
-  const hashed = await bcrypt.hash(password, 10);
-
   try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    const exists = await User.findOne({ email });
+    if (exists) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+
     const user = await User.create({
       email,
       password: hashed,
-      name
+      balance: 0
     });
-    res.json({ success: true, userId: user._id });
-  } catch {
-    res.status(400).json({ error: "User exists" });
+
+    res.json({ email: user.email, balance: user.balance });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
   }
 });
 
+/* LOGIN */
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  const user = await User.findOne({ email });
+  try {
+    const { email, password } = req.body;
 
-  if (!user) return res.status(400).json({ error: "Invalid login" });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: "User not found" });
 
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return res.status(400).json({ error: "Invalid login" });
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(400).json({ error: "Wrong password" });
 
-  res.json({ success: true, userId: user._id, balance: user.balance });
+    res.json({ email: user.email, balance: user.balance });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 export default router;
