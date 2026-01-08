@@ -1,10 +1,11 @@
 import express from "express";
-import User from "../models/User.js";
 import Transaction from "../models/Transaction.js";
 
 const router = express.Router();
 
-/* ADMIN LOGIN */
+/**
+ * ADMIN LOGIN
+ */
 router.post("/login", (req, res) => {
   const { email, password } = req.body;
 
@@ -15,33 +16,19 @@ router.post("/login", (req, res) => {
     return res.json({ success: true });
   }
 
-  res.status(401).json({ error: "Invalid admin credentials" });
+  res.status(401).json({ success: false, error: "Invalid admin credentials" });
 });
 
-/* GET ALL USERS */
-router.get("/users", async (req, res) => {
-  const users = await User.find().select("-password");
-  res.json(users);
-});
-
-/* FREEZE USER */
-router.post("/freeze", async (req, res) => {
-  const { email } = req.body;
-  await User.updateOne({ email }, { blocked: true });
-  res.json({ message: "User frozen" });
-});
-
-/* UNFREEZE USER */
-router.post("/unfreeze", async (req, res) => {
-  const { email } = req.body;
-  await User.updateOne({ email }, { blocked: false });
-  res.json({ message: "User unfrozen" });
-});
-
-/* ALL TRANSACTIONS */
+/**
+ * GET ALL TRANSACTIONS
+ */
 router.get("/transactions", async (req, res) => {
-  const tx = await Transaction.find().sort({ createdAt: -1 });
-  res.json(tx);
+  try {
+    const transactions = await Transaction.find().sort({ createdAt: -1 });
+    res.json(transactions);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch transactions" });
+  }
 });
 
 export default router;
