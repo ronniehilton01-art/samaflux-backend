@@ -1,10 +1,14 @@
 import mongoose from "mongoose";
 
-const TransactionSchema = new mongoose.Schema({
-  userId: mongoose.Schema.Types.ObjectId,
-  type: String,
-  amount: Number,
-  status: String
-}, { timestamps: true });
+const transactionSchema = new mongoose.Schema(
+  {
+    user: String,
+    type: String, // send, receive, add, withdraw
+    amount: Number,
+    from: String,
+    to: String,
+  },
+  { timestamps: true }
+);
 
-export default mongoose.model("Transaction", TransactionSchema);
+export default mongoose.model("Transaction", transactionSchema);
