@@ -4,7 +4,9 @@ import bcrypt from "bcryptjs";
 
 const router = express.Router();
 
-/* REGISTER */
+/* ======================
+   REGISTER
+====================== */
 router.post("/register", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -26,25 +28,64 @@ router.post("/register", async (req, res) => {
       balance: 0
     });
 
-    res.json({ email: user.email, balance: user.balance });
+    res.json({
+      email: user.email,
+      balance: user.balance
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-/* LOGIN */
+/* ======================
+   LOGIN
+====================== */
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    if (!email || !password) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ error: "User not found" });
+    if (!user) {
+      return res.status(400).json({ error: "User not found" });
+    }
 
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(400).json({ error: "Wrong password" });
+    if (!ok) {
+      return res.status(400).json({ error: "Wrong password" });
+    }
 
-    res.json({ email: user.email, balance: user.balance });
+    res.json({
+      email: user.email,
+      balance: user.balance
+    });
   } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/* ======================
+   GET USER (BALANCE)
+====================== */
+router.get("/user/:email", async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.params.email });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      email: user.email,
+      balance: user.balance
+    });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
