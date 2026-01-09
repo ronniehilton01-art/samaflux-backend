@@ -1,119 +1,88 @@
 import express from "express";
-import axios from "axios";
+import fetch from "node-fetch";
 import User from "../models/User.js";
 
 const router = express.Router();
 
-/* =========================
-   ADD MONEY (INIT PAYMENT)
-========================= */
-router.post("/add", async (req, res) => {
+/* ==========================
+   TEST
+========================== */
+router.get("/test", (req, res) => {
+  res.json({ ok: true });
+});
+
+/* ==========================
+   ADD MONEY (INITIALIZE)
+========================== */
+router.post("/add-money", async (req, res) => {
   try {
     const { email, amount } = req.body;
 
-    const response = await axios.post(
+    if (!email || !amount) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const response = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
-        email,
-        amount: amount * 100,
-        callback_url: "https://samaflux-backend.onrender.com/api/payment/verify"
-      },
-      {
+        method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
           "Content-Type": "application/json"
-        }
+        },
+        body: JSON.stringify({
+          email,
+          amount: amount * 100,
+          callback_url: `${process.env.BACKEND_URL}/api/payment/verify`
+        })
       }
     );
 
-    res.json(response.data);
+    const data = await response.json();
+    res.json(data);
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ error: "Payment initialization failed" });
+    res.status(500).json({ error: "Payment init failed" });
   }
 });
 
-/* =========================
-   VERIFY PAYMENT (IMPORTANT)
-========================= */
+/* ==========================
+   VERIFY PAYMENT
+========================== */
 router.get("/verify", async (req, res) => {
   try {
-    const reference = req.query.reference;
+    const { reference } = req.query;
 
-    const response = await axios.get(
+    const response = await fetch(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
         headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`
         }
       }
     );
 
-    const data = response.data.data;
+    const data = await response.json();
 
-    if (data.status !== "success") {
-      return res.send("Payment not successful");
+    if (!data.status) {
+      return res.redirect(process.env.FRONTEND_URL);
     }
 
-    const email = data.customer.email;
-    const amount = data.amount / 100;
+    const email = data.data.customer.email;
+    const amount = data.data.amount / 100;
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.send("User not found");
-    }
+    if (!user) return res.redirect(process.env.FRONTEND_URL);
 
     user.balance += amount;
-    user.transactions.push({
-      type: "credit",
-      amount
-    });
-
     await user.save();
 
-    /* REDIRECT BACK TO FRONTEND */
-    res.redirect("https://samaflux-frontend.onrender.com");
+    res.redirect(process.env.FRONTEND_URL);
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).send("Verification failed");
+    res.redirect(process.env.FRONTEND_URL);
   }
-});
-
-/* =========================
-   SEND MONEY
-========================= */
-router.post("/send", async (req, res) => {
-  const { fromEmail, toEmail, amount } = req.body;
-
-  const sender = await User.findOne({ email: fromEmail });
-  const receiver = await User.findOne({ email: toEmail });
-
-  if (!sender || !receiver) {
-    return res.status(400).json({ error: "User not found" });
-  }
-
-  if (sender.balance < amount) {
-    return res.status(400).json({ error: "Insufficient balance" });
-  }
-
-  sender.balance -= amount;
-  receiver.balance += amount;
-
-  sender.transactions.push({ type: "sent", amount });
-  receiver.transactions.push({ type: "received", amount });
-
-  await sender.save();
-  await receiver.save();
-
-  res.json({ message: "Transfer successful" });
-});
-
-/* =========================
-   TRANSACTION HISTORY
-========================= */
-router.get("/history/:email", async (req, res) => {
-  const user = await User.findOne({ email: req.params.email });
-  res.json(user?.transactions || []);
 });
 
 export default router;
