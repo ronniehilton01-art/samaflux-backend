@@ -28,12 +28,8 @@ router.post("/register", async (req, res) => {
       balance: 0
     });
 
-    res.json({
-      email: user.email,
-      balance: user.balance
-    });
+    res.json({ email: user.email, balance: user.balance });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -44,10 +40,6 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
 
     const user = await User.findOne({ email });
     if (!user) {
@@ -64,18 +56,16 @@ router.post("/login", async (req, res) => {
       balance: user.balance
     });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
 /* ======================
-   GET USER (BALANCE)
+   GET USER (🔥 THIS FIXES EVERYTHING)
 ====================== */
 router.get("/user/:email", async (req, res) => {
   try {
     const user = await User.findOne({ email: req.params.email });
-
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -85,7 +75,6 @@ router.get("/user/:email", async (req, res) => {
       balance: user.balance
     });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
