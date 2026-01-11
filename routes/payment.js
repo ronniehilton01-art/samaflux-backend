@@ -5,84 +5,65 @@ import Transaction from "../models/Transaction.js";
 
 const router = express.Router();
 
-/* ============================
-   INITIALIZE PAYMENT
-============================ */
+/* INITIALIZE PAYMENT */
 router.post("/add", async (req, res) => {
-  try {
-    const { email, amount } = req.body;
+  const { email, amount } = req.body;
 
-    if (!email || !amount) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
-
-    const response = await fetch("https://api.paystack.co/transaction/initialize", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        email,
-        amount: amount * 100,
-        callback_url: `${process.env.BASE_URL}/api/payment/verify`
-      })
-    });
-
-    const data = await response.json();
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: "Payment init failed" });
-  }
-});
-
-/* ============================
-   VERIFY PAYMENT
-============================ */
-router.get("/verify", async (req, res) => {
-  try {
-    const { reference } = req.query;
-
-    const response = await fetch(
-      `https://api.paystack.co/transaction/verify/${reference}`,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`
-        }
-      }
-    );
-
-    const result = await response.json();
-
-    if (result.data.status !== "success") {
-      return res.redirect("https://samaflux-frontend.onrender.com/?failed=true");
-    }
-
-    const email = result.data.customer.email;
-    const amount = result.data.amount / 100;
-
-    const user = await User.findOne({ email });
-    if (!user) return res.redirect("https://samaflux-frontend.onrender.com");
-
-    user.balance += amount;
-    await user.save();
-
-    await Transaction.create({
+  const response = await fetch("https://api.paystack.co/transaction/initialize", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
       email,
-      amount,
-      type: "credit",
-      reference
-    });
+      amount: amount * 100,
+      callback_url: `${process.env.FRONTEND_URL}/index.html`
+    })
+  });
 
-    res.redirect("https://samaflux-frontend.onrender.com/?success=true");
-  } catch (err) {
-    res.redirect("https://samaflux-frontend.onrender.com/?failed=true");
-  }
+  const data = await response.json();
+  res.json(data);
 });
 
-/* ============================
-   TRANSACTION HISTORY
-============================ */
+/* VERIFY PAYMENT */
+router.get("/verify/:reference", async (req, res) => {
+  const ref = req.params.reference;
+
+  const response = await fetch(
+    `https://api.paystack.co/transaction/verify/${ref}`,
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`
+      }
+    }
+  );
+
+  const data = await response.json();
+
+  if (!data.status) {
+    return res.status(400).json({ error: "Verification failed" });
+  }
+
+  const email = data.data.customer.email;
+  const amount = data.data.amount / 100;
+
+  const user = await User.findOne({ email });
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  user.balance += amount;
+  await user.save();
+
+  await Transaction.create({
+    email,
+    type: "credit",
+    amount
+  });
+
+  res.json({ success: true });
+});
+
+/* TRANSACTION HISTORY */
 router.get("/history/:email", async (req, res) => {
   const tx = await Transaction.find({ email: req.params.email });
   res.json(tx);
