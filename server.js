@@ -10,25 +10,28 @@ dotenv.config();
 
 const app = express();
 
-/* MIDDLEWARE */
-app.use(cors());
-app.use(express.json());
+/* PAYSTACK NEEDS RAW BODY */
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+);
 
-/* ROUTES */
-app.use("/api/auth", authRoutes);
+app.use(cors());
+
+app.use("/auth", authRoutes);
 app.use("/api/payment", paymentRoutes);
 
-/* HEALTH CHECK */
 app.get("/", (req, res) => {
-  res.json({ ok: true, message: "Samaflux backend running" });
+  res.json({ ok: true });
 });
 
-/* DATABASE */
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected"))
-  .catch(err => console.error(err));
+  .catch(console.error);
 
-/* SERVER */
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+app.listen(PORT, () => console.log("Server running on", PORT));
