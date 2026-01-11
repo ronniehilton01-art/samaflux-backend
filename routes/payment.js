@@ -1,52 +1,33 @@
-import express from "express";
-import fetch from "node-fetch";
-import crypto from "crypto";
-import User from "../models/User.js";
-import Transaction from "../models/Transaction.js";
-
-const router = express.Router();
-
-/* INIT PAYMENT */
-router.post("/add", async (req, res) => {
-  const { email, amount } = req.body;
-
-  const response = await fetch(
-    "https://api.paystack.co/transaction/initialize",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        email,
-        amount: amount * 100,
-        callback_url: process.env.CALLBACK_URL
-      })
-    }
-  );
-
-  const data = await response.json();
-  res.json(data);
-});
-
-/* WEBHOOK */
 router.post("/webhook", async (req, res) => {
+  console.log("🔥 WEBHOOK HIT");
+
+  const signature = req.headers["x-paystack-signature"];
+  console.log("Signature:", signature);
+
   const hash = crypto
     .createHmac("sha512", process.env.PAYSTACK_SECRET)
     .update(req.rawBody)
     .digest("hex");
 
-  if (hash !== req.headers["x-paystack-signature"])
+  console.log("Computed Hash:", hash);
+
+  if (hash !== signature) {
+    console.log("❌ SIGNATURE MISMATCH");
     return res.sendStatus(401);
+  }
 
   const event = req.body;
+  console.log("EVENT:", event.event);
 
   if (event.event === "charge.success") {
     const email = event.data.customer.email;
     const amount = event.data.amount / 100;
 
+    console.log("EMAIL:", email, "AMOUNT:", amount);
+
     const user = await User.findOne({ email });
+    console.log("USER FOUND:", !!user);
+
     if (user) {
       user.balance += amount;
       await user.save();
@@ -56,16 +37,10 @@ router.post("/webhook", async (req, res) => {
         amount,
         type: "credit"
       });
+
+      console.log("✅ BALANCE UPDATED");
     }
   }
 
   res.sendStatus(200);
 });
-
-/* HISTORY */
-router.get("/history/:email", async (req, res) => {
-  const tx = await Transaction.find({ email: req.params.email });
-  res.json(tx);
-});
-
-export default router;
