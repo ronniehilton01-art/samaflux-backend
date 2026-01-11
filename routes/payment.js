@@ -6,56 +6,39 @@ import Transaction from "../models/Transaction.js";
 
 const router = express.Router();
 
-/* ======================================================
-   PAYSTACK TEST ROUTE
-====================================================== */
-router.get("/test", (req, res) => {
-  res.json({ ok: true });
-});
-
-/* ======================================================
-   INITIALIZE PAYMENT (ADD MONEY)
-====================================================== */
+/* =========================
+   INIT PAYSTACK PAYMENT
+========================= */
 router.post("/add", async (req, res) => {
-  try {
-    const { email, amount } = req.body;
+  const { email, amount } = req.body;
 
-    if (!email || !amount) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
-
-    const response = await fetch(
-      "https://api.paystack.co/transaction/initialize",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          email,
-          amount: amount * 100,
-          callback_url: "https://ronniehilton01-art.github.io/samaflux-frontend/"
-        })
-      }
-    );
-
-    const data = await response.json();
-
-    if (!data.status) {
-      return res.status(400).json({ error: "Unable to initialize payment" });
-    }
-
-    res.json(data);
-  } catch (err) {
-    console.error("PAYMENT INIT ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+  if (!email || !amount) {
+    return res.status(400).json({ error: "Missing fields" });
   }
+
+  const response = await fetch(
+    "https://api.paystack.co/transaction/initialize",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email,
+        amount: amount * 100,
+        callback_url: process.env.CALLBACK_URL
+      })
+    }
+  );
+
+  const data = await response.json();
+  res.json(data);
 });
 
-/* ======================================================
-   PAYSTACK WEBHOOK (UPDATES MONGODB)
-====================================================== */
+/* =========================
+   PAYSTACK WEBHOOK
+========================= */
 router.post(
   "/webhook",
   express.raw({ type: "application/json" }),
@@ -63,19 +46,17 @@ router.post(
     try {
       const signature = req.headers["x-paystack-signature"];
 
-      const hash = crypto
+      const computedHash = crypto
         .createHmac("sha512", process.env.PAYSTACK_SECRET)
         .update(req.body)
         .digest("hex");
 
-      if (hash !== signature) {
-        console.log("❌ Paystack signature mismatch");
+      if (computedHash !== signature) {
+        console.log("❌ Invalid Paystack signature");
         return res.sendStatus(401);
       }
 
       const event = JSON.parse(req.body.toString());
-
-      console.log("📩 Paystack event:", event.event);
 
       if (event.event === "charge.success") {
         const email = event.data.customer.email;
@@ -83,7 +64,7 @@ router.post(
 
         const user = await User.findOne({ email });
         if (!user) {
-          console.log("❌ User not found:", email);
+          console.log("❌ User not found for webhook:", email);
           return res.sendStatus(200);
         }
 
@@ -97,28 +78,23 @@ router.post(
           reference: event.data.reference
         });
 
-        console.log("✅ Balance updated:", email, amount);
+        console.log("✅ Paystack credit applied:", email, amount);
       }
 
       res.sendStatus(200);
     } catch (err) {
-      console.error("WEBHOOK ERROR:", err);
+      console.error("Webhook error:", err);
       res.sendStatus(500);
     }
   }
 );
 
-/* ======================================================
+/* =========================
    TRANSACTION HISTORY
-====================================================== */
+========================= */
 router.get("/history/:email", async (req, res) => {
-  try {
-    const { email } = req.params;
-    const tx = await Transaction.find({ email }).sort({ createdAt: -1 });
-    res.json(tx);
-  } catch (err) {
-    res.status(500).json({ error: "Server error" });
-  }
+  const tx = await Transaction.find({ email }).sort({ createdAt: -1 });
+  res.json(tx);
 });
 
 export default router;
