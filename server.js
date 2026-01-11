@@ -10,37 +10,25 @@ dotenv.config();
 
 const app = express();
 
-/* ======================
-   MIDDLEWARE
-====================== */
+/* MIDDLEWARE */
 app.use(cors());
 app.use(express.json());
 
-/* ======================
-   ROUTES
-====================== */
+/* ROUTES */
 app.use("/api/auth", authRoutes);
 app.use("/api/payment", paymentRoutes);
 
-/* ======================
-   HEALTH CHECK
-====================== */
+/* HEALTH CHECK */
 app.get("/", (req, res) => {
-  res.json({ status: "Samaflux backend running" });
+  res.json({ ok: true, message: "Samaflux backend running" });
 });
 
-/* ======================
-   DATABASE
-====================== */
+/* DATABASE */
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected"))
   .catch(err => console.error(err));
 
-/* ======================
-   SERVER
-====================== */
+/* SERVER */
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
