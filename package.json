@@ -14,3 +14,5 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.1.1",
     "node-fetch": "^3.3.2"
+  }
+}
