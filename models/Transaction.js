@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import mongoose from "mongoose";
 
 const transactionSchema = new mongoose.Schema({
@@ -10,3 +11,17 @@ const transactionSchema = new mongoose.Schema({
 
 export default mongoose.model("Transaction", transactionSchema);
 
+=======
+import mongoose from "mongoose";
+
+const transactionSchema = new mongoose.Schema({
+  type: { type: String, required: true }, // add | send | receive
+  amount: { type: Number, required: true },
+  from: String,
+  to: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+export default mongoose.model("Transaction", transactionSchema);
+
+>>>>>>> f65dadf (backend setup + jsonwebtoken installed)
