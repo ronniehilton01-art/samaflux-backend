@@ -7,144 +7,72 @@ import Transaction from "../models/Transaction.js";
 const router = express.Router();
 
 /* =========================
-   INIT PAYSTACK PAYMENT
+   INIT PAYSTACK PAYMENT (Add Money)
 ========================= */
 router.post("/add", async (req, res) => {
   const { email, amount } = req.body;
 
-  if (!email || !amount) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
+  if (!email || !amount) return res.status(400).json({ error: "Missing fields" });
 
   try {
-    const response = await fetch(
-      "https://api.paystack.co/transaction/initialize",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          email,
-          amount: amount * 100,
-          callback_url: process.env.CALLBACK_URL
-        })
-      }
-    );
+    const response = await fetch("https://api.paystack.co/transaction/initialize", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_SECRET}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email,
+        amount: amount * 100,
+        callback_url: process.env.CALLBACK_URL
+      })
+    });
 
     const data = await response.json();
     res.json(data);
   } catch (err) {
-    console.error("Paystack error:", err);
-    res.status(500).json({ error: "Payment initialization failed" });
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
 /* =========================
-   SEND MONEY BETWEEN USERS
+   SEND MONEY TO OTHER USER
 ========================= */
 router.post("/send", async (req, res) => {
   const { fromEmail, toEmail, amount } = req.body;
 
-  if (!fromEmail || !toEmail || !amount) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
-
-  if (fromEmail === toEmail) {
-    return res.status(400).json({ error: "Cannot send money to yourself" });
-  }
+  if (!fromEmail || !toEmail || !amount) return res.status(400).json({ error: "Missing fields" });
+  if (fromEmail === toEmail) return res.status(400).json({ error: "Cannot send to yourself" });
 
   try {
     const sender = await User.findOne({ email: fromEmail });
-    const recipient = await User.findOne({ email: toEmail });
+    const receiver = await User.findOne({ email: toEmail });
 
-    if (!sender) return res.status(404).json({ error: "Sender not found" });
-    if (!recipient) return res.status(404).json({ error: "Recipient not found" });
-    if (sender.balance < amount) return res.status(400).json({ error: "Insufficient balance" });
+    if (!sender || !receiver) return res.status(404).json({ error: "User not found" });
+    if (sender.balance < amount) return res.status(400).json({ error: "Insufficient funds" });
 
-    // Deduct from sender
     sender.balance -= amount;
+    receiver.balance += amount;
+
     await sender.save();
+    await receiver.save();
 
-    // Credit to recipient
-    recipient.balance += amount;
-    await recipient.save();
+    await Transaction.create({ type: "send", amount, from: fromEmail, to: toEmail });
+    await Transaction.create({ type: "receive", amount, from: fromEmail, to: toEmail });
 
-    // Record transactions
-    await Transaction.create({
-      type: "send",
-      amount,
-      from: fromEmail,
-      to: toEmail
-    });
-
-    res.json({ success: true, message: `Sent ₦${amount} to ${toEmail}` });
+    res.json({ success: true });
   } catch (err) {
-    console.error("Send money error:", err);
-    res.status(500).json({ error: "Transaction failed" });
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
   }
 });
-
-/* =========================
-   PAYSTACK WEBHOOK
-========================= */
-router.post(
-  "/webhook",
-  express.raw({ type: "application/json" }),
-  async (req, res) => {
-    try {
-      const signature = req.headers["x-paystack-signature"];
-
-      const computedHash = crypto
-        .createHmac("sha512", process.env.PAYSTACK_SECRET)
-        .update(req.body)
-        .digest("hex");
-
-      if (computedHash !== signature) {
-        console.log("❌ Invalid Paystack signature");
-        return res.sendStatus(401);
-      }
-
-      const event = JSON.parse(req.body.toString());
-
-      if (event.event === "charge.success") {
-        const email = event.data.customer.email;
-        const amount = event.data.amount / 100;
-
-        const user = await User.findOne({ email });
-        if (!user) {
-          console.log("❌ User not found for webhook:", email);
-          return res.sendStatus(200);
-        }
-
-        user.balance += amount;
-        await user.save();
-
-        await Transaction.create({
-          email,
-          amount,
-          type: "credit",
-          reference: event.data.reference
-        });
-
-        console.log("✅ Paystack credit applied:", email, amount);
-      }
-
-      res.sendStatus(200);
-    } catch (err) {
-      console.error("Webhook error:", err);
-      res.sendStatus(500);
-    }
-  }
-);
 
 /* =========================
    TRANSACTION HISTORY
 ========================= */
 router.get("/history/:email", async (req, res) => {
-  const email = req.params.email;
-  const tx = await Transaction.find({ $or: [{ from: email }, { to: email }] }).sort({ createdAt: -1 });
+  const tx = await Transaction.find({ $or: [{ from: req.params.email }, { to: req.params.email }] }).sort({ createdAt: -1 });
   res.json(tx);
 });
 
