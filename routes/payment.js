@@ -10,13 +10,13 @@ const router = express.Router();
    INIT PAYSTACK PAYMENT
 ========================= */
 router.post("/add", async (req, res) => {
+  const { email, amount } = req.body;
+
+  if (!email || !amount) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
   try {
-    const { email, amount } = req.body;
-
-    if (!email || !amount) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
-
     const response = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -36,8 +36,53 @@ router.post("/add", async (req, res) => {
     const data = await response.json();
     res.json(data);
   } catch (err) {
-    console.error("Payment initialization error:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("Paystack error:", err);
+    res.status(500).json({ error: "Payment initialization failed" });
+  }
+});
+
+/* =========================
+   SEND MONEY BETWEEN USERS
+========================= */
+router.post("/send", async (req, res) => {
+  const { fromEmail, toEmail, amount } = req.body;
+
+  if (!fromEmail || !toEmail || !amount) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  if (fromEmail === toEmail) {
+    return res.status(400).json({ error: "Cannot send money to yourself" });
+  }
+
+  try {
+    const sender = await User.findOne({ email: fromEmail });
+    const recipient = await User.findOne({ email: toEmail });
+
+    if (!sender) return res.status(404).json({ error: "Sender not found" });
+    if (!recipient) return res.status(404).json({ error: "Recipient not found" });
+    if (sender.balance < amount) return res.status(400).json({ error: "Insufficient balance" });
+
+    // Deduct from sender
+    sender.balance -= amount;
+    await sender.save();
+
+    // Credit to recipient
+    recipient.balance += amount;
+    await recipient.save();
+
+    // Record transactions
+    await Transaction.create({
+      type: "send",
+      amount,
+      from: fromEmail,
+      to: toEmail
+    });
+
+    res.json({ success: true, message: `Sent ₦${amount} to ${toEmail}` });
+  } catch (err) {
+    console.error("Send money error:", err);
+    res.status(500).json({ error: "Transaction failed" });
   }
 });
 
@@ -98,13 +143,9 @@ router.post(
    TRANSACTION HISTORY
 ========================= */
 router.get("/history/:email", async (req, res) => {
-  try {
-    const tx = await Transaction.find({ email: req.params.email }).sort({ createdAt: -1 });
-    res.json(tx);
-  } catch (err) {
-    console.error("Transaction history error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
+  const email = req.params.email;
+  const tx = await Transaction.find({ $or: [{ from: email }, { to: email }] }).sort({ createdAt: -1 });
+  res.json(tx);
 });
 
 export default router;
