@@ -6,14 +6,14 @@ import User from "../models/User.js";
 const router = express.Router();
 
 /* =====================
-   REGISTER USER
+   REGISTER
 ===================== */
 router.post("/register", async (req, res) => {
   try {
     const {
       email,
       password,
-      name,
+      fullName,
       phone,
       address,
       city,
@@ -22,21 +22,19 @@ router.post("/register", async (req, res) => {
       zip
     } = req.body;
 
-    if (!email || !password) {
+    if (!email || !password)
       return res.status(400).json({ error: "Missing email or password" });
-    }
 
     const exists = await User.findOne({ email });
-    if (exists) {
+    if (exists)
       return res.status(400).json({ error: "User already exists" });
-    }
 
     const hashed = await bcrypt.hash(password, 10);
 
     await User.create({
       email,
       password: hashed,
-      name,
+      fullName,
       phone,
       address,
       city,
@@ -54,21 +52,19 @@ router.post("/register", async (req, res) => {
 });
 
 /* =====================
-   LOGIN USER
+   LOGIN
 ===================== */
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ error: "Invalid email or password" });
-    }
+    if (!user)
+      return res.status(400).json({ error: "Invalid credentials" });
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) {
-      return res.status(400).json({ error: "Invalid email or password" });
-    }
+    if (!match)
+      return res.status(400).json({ error: "Invalid credentials" });
 
     const token = jwt.sign(
       { id: user._id },
@@ -88,34 +84,22 @@ router.post("/login", async (req, res) => {
 });
 
 /* =====================
-   GET CURRENT USER
+   GET PROFILE
 ===================== */
 router.get("/me", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader) {
+    if (!authHeader)
       return res.status(401).json({ error: "Unauthorized" });
-    }
 
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const user = await User.findById(decoded.id).select("-password");
-    if (!user) {
+    if (!user)
       return res.status(404).json({ error: "User not found" });
-    }
 
-    res.json({
-      email: user.email,
-      name: user.name,
-      phone: user.phone,
-      address: user.address,
-      city: user.city,
-      state: user.state,
-      country: user.country,
-      zip: user.zip,
-      balance: user.balance
-    });
+    res.json(user);
   } catch (err) {
     console.error(err);
     res.status(401).json({ error: "Invalid token" });
