@@ -1,3 +1,4 @@
+import auth from "../middleware/auth.js";
 import express from "express";
 import fetch from "node-fetch";
 import User from "../models/User.js";
@@ -8,7 +9,7 @@ const router = express.Router();
 /* =====================
    INIT PAYSTACK
 ===================== */
-router.post("/init-paystack", async (req, res) => {
+router.post("/init-paystack", auth, async (req, res) => {
   try {
     const { amount } = req.body;
     const email = req.user.email; // from auth middleware
