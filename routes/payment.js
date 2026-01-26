@@ -1,73 +1,129 @@
 import express from "express";
+import fetch from "node-fetch";
 import User from "../models/User.js";
 import Transaction from "../models/Transaction.js";
 
 const router = express.Router();
 
 /* =====================
-   ADD MONEY
+   INIT PAYSTACK
 ===================== */
-router.post("/add", async (req, res) => {
+router.post("/init-paystack", async (req, res) => {
   try {
-    const { email, amount } = req.body;
-    if (!email || !amount) return res.status(400).json({ error: "Missing fields" });
+    const { amount } = req.body;
+    const email = req.user.email; // from auth middleware
+
+    if (!amount) {
+      return res.status(400).json({ error: "Amount required" });
+    }
+
+    const response = await fetch(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          amount: amount * 100,
+          callback_url: "https://samaflux.netlify.app", // YOUR FRONTEND URL
+        }),
+      }
+    );
+
+    const data = await response.json();
+    res.json(data.data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Paystack init failed" });
+  }
+});
+
+/* =====================
+   VERIFY PAYSTACK
+===================== */
+router.get("/verify/:reference", async (req, res) => {
+  try {
+    const response = await fetch(
+      `https://api.paystack.co/transaction/verify/${req.params.reference}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+    if (data.data.status !== "success") {
+      return res.status(400).json({ error: "Payment not successful" });
+    }
+
+    const email = data.data.customer.email;
+    const amount = data.data.amount / 100;
 
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    user.balance += Number(amount);
+    user.balance += amount;
     await user.save();
 
-    await Transaction.create({ email, type: "add", amount: Number(amount) });
+    await Transaction.create({
+      email,
+      type: "add",
+      amount,
+    });
 
-    res.json({ success: true, balance: user.balance });
+    res.json({ success: true, amount });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "Verification failed" });
   }
 });
 
 /* =====================
-   SEND MONEY TO ANOTHER USER
+   SEND MONEY
 ===================== */
 router.post("/send", async (req, res) => {
-  try {
-    const { fromEmail, toEmail, amount } = req.body;
-    if (!fromEmail || !toEmail || !amount) return res.status(400).json({ error: "Missing fields" });
+  const { fromEmail, toEmail, amount } = req.body;
 
-    const sender = await User.findOne({ email: fromEmail });
-    const receiver = await User.findOne({ email: toEmail });
-
-    if (!sender || !receiver) return res.status(404).json({ error: "User not found" });
-    if (sender.balance < amount) return res.status(400).json({ error: "Insufficient funds" });
-
-    sender.balance -= Number(amount);
-    receiver.balance += Number(amount);
-
-    await sender.save();
-    await receiver.save();
-
-    await Transaction.create({ email: fromEmail, type: "send", amount: Number(amount), to: toEmail });
-    await Transaction.create({ email: toEmail, type: "receive", amount: Number(amount), from: fromEmail });
-
-    res.json({ success: true, senderBalance: sender.balance, receiverBalance: receiver.balance });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+  if (!fromEmail || !toEmail || !amount) {
+    return res.status(400).json({ error: "Missing fields" });
   }
+
+  const sender = await User.findOne({ email: fromEmail });
+  const receiver = await User.findOne({ email: toEmail });
+
+  if (!sender || !receiver) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  if (sender.balance < amount) {
+    return res.status(400).json({ error: "Insufficient funds" });
+  }
+
+  sender.balance -= amount;
+  receiver.balance += amount;
+
+  await sender.save();
+  await receiver.save();
+
+  await Transaction.create({ email: fromEmail, type: "send", amount });
+  await Transaction.create({ email: toEmail, type: "receive", amount });
+
+  res.json({ success: true });
 });
 
 /* =====================
-   TRANSACTION HISTORY
+   HISTORY
 ===================== */
 router.get("/history/:email", async (req, res) => {
-  try {
-    const tx = await Transaction.find({ email: req.params.email }).sort({ createdAt: -1 });
-    res.json(tx);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
-  }
+  const tx = await Transaction.find({ email: req.params.email })
+    .sort({ createdAt: -1 })
+    .limit(5);
+
+  res.json(tx);
 });
 
 export default router;
